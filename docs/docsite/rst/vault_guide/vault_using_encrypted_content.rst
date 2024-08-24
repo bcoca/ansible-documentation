@@ -107,78 +107,64 @@ If you don't want to provide the password file on the command line or if you use
 
 The file that you reference can be either a file containing the password (in plain text), or it can be a script (with executable permissions set) that returns the password.
 
-When are encrypted files made visible?
-======================================
+When is the encrypted data made visible?
+========================================
 
-In general, the content you encrypt with Ansible Vault remains encrypted after execution. However, there is one exception. If you pass an encrypted file as the ``src`` argument to the :ref:`copy <copy_module>`, :ref:`template <template_module>`, :ref:`unarchive <unarchive_module>`, :ref:`script <script_module>` or :ref:`assemble <assemble_module>` module, the file will not be encrypted on the target host (assuming you supply the correct vault password when you run the play). This behavior is intended and useful. You can encrypt a configuration file or template to avoid sharing the details of your configuration, but when you copy that configuration to servers in your environment, you want it to be decrypted so local users and processes can access it.
+In general, the content you encrypt with Ansible Vault remains encrypted until needed. This is different depending on how you use the vaults.
+
+    * For file vaults and some actions in which you pass them as the ``src`` argument to the :ref:`copy <copy_module>`, :ref:`template <template_module>`, :ref:`unarchive <unarchive_module>`, :ref:`script <script_module>` or :ref:`assemble <assemble_module>` module, the file will be decrypted on the controller and pushed in the clear to the target host (assuming you supply the correct vault password when you run the play). This is designed so can encrypt a configuration file or template to avoid sharing the details of your configuration, but when you copy that configuration to servers in your environment, you want it to be decrypted so local users and processes can access it.
+     This is the default behaviour but the user can change that via the ``decrypt`` option. Disabling this  will result in the actions copying a vaulted/encrypted copy to the target.
+
+    * Vaulted variable files are decrypted on load as Ansible needs to know the variable names available, which are also encrypted when it is a fully vaulted file. This is true no matter how they are loaded, as extra vars, ``vars_files``, ``include_vars`` or a vars plugin.
+
+    * Inline vaulted variables are decrypt when consumed, this is normally done at the task level when resolving the value for a playbook keyword or when assigned an action's options.
+
+
+.. note::
+
+    * Like templating, all decryption happens on the controller, this avoids having to disclose vault passwords to the targets.
 
 .. _vault_format:
 
-Format of files encrypted with Ansible Vault
-============================================
+The Vault Format
+================
 
-Ansible Vault creates UTF-8 encoded txt files. The file format includes a newline terminated header. For example:
+Ansible Vault creates UTF-8 encoded txt. The format includes a semi-colon (``;``) delmited header separated from a 'vaulttext' by a newline.
+For example:
 
  .. code-block:: text
 
-    $ANSIBLE_VAULT;1.1;AES256
+    $ANSIBLE_VAULT;1.1;V2
+    eyJrZXkiOiAiZ0FBQUFBQm15bF9weGtPanc0X1NqbFBEX3ltZEk0NUhqX1hkUzBjRWc1QU1GdkJUMGZh
+    eDA3UFJOeVBPS3RJUTliTHJHX3k1OWh5czBZQ25Fbi12MnRWeDFwWmdoRU94Qmx3Y1Ntd214RDRvWC1L
+    eUhFMjlEVk1yUk05cmI5VGFRQjdpZGZuWWlCdVQiLCAiY2lwaGVydGV4dCI6ICJnQUFBQUFCbXlsX3A5
+    MXFjVTF6dml6NFVUcC1HLU5JYVpGSG9MRU03NUEwX09GME9ZSG15MEQ1OUtST0thRDNzOFFjamtwc3Q3
+    c2ZSZXhPU2ZWd0R0dU5EWGhkZjF0M3dnSnBFQzFRUGJyZE9VeHZKNFFmMnZwQT0ifQ==
 
 or
 
  .. code-block:: text
 
     $ANSIBLE_VAULT;1.2;AES256;vault-id-label
+    30613233633461343837653833666333643061636561303338373661313838333565653635353162
+    3263363434623733343538653462613064333634333464660a663633623939393439316636633863
+    61636237636537333938306331383339353265363239643939666639386530626330633337633833
+    6664656334373166630a363736393262666465663432613932613036303963343263623137386239
+    6330
 
-The header contains up to four elements, separated by semi-colons (``;``).
+The header contains up to four elements.
 
-  1. The format ID (``$ANSIBLE_VAULT``). Currently ``$ANSIBLE_VAULT`` is the only valid format ID. The format ID identifies content that is encrypted with Ansible Vault (with vault.is_encrypted_file()).
+  1. The format ID (``$ANSIBLE_VAULT``), which currently is the only valid format ID. This ID identifies content as an Ansible Vault.
 
-  2. The vault format version (``1.X``). All supported versions of Ansible will currently default to '1.1' or '1.2' if a labeled vault ID is supplied. The '1.0' format is supported for reading only (and will be converted automatically to the '1.1' format on write). The format version is currently used as an exact string compare only (version numbers are not currently 'compared').
+  2. The vault format version (``1.X``). All supported versions of Ansible will currently default to '1.1' or '1.2' if a labeled vault ID is supplied.
+     The format version is currently used as an exact string compare only (version numbers are not currently 'compared').
+     The '1.0' format was retired and is no longer supported.
 
-  3. The cipher algorithm used to encrypt the data (``AES256``). Currently ``AES256`` is the only supported cipher algorithm. Vault format 1.0 used 'AES', but the current code always uses 'AES256'.
+  3. The encryption method used on the data (``V2`` or ``AES256``). Currently ``V2`` is the default encryption method.
+      Vault format 1.0 used the ``AES`` encryption method, but it was removed and is no longer available.
 
   4. The vault ID label used to encrypt the data (optional, ``vault-id-label``) For example, if you encrypt a file with ``--vault-id dev@prompt``, the vault-id-label is ``dev``.
 
-Note: In the future, the header could change. Fields after the format ID and format version depend on the format version. Future vault format versions may add more cipher algorithm options and/or additional fields.
-
-The rest of the content of the file is the 'vaulttext'. The vaulttext is a text-armored version of the
-encrypted ciphertext. Each line is 80 characters wide, except for the last line which may be shorter.
-
-Ansible Vault payload format 1.1 - 1.2
---------------------------------------
-
-The vaulttext is a concatenation of the ciphertext and a SHA256 digest with the result 'hexlifyied'.
-
-'hexlify' refers to the ``hexlify()`` method of the Python Standard Library's `binascii <https://docs.python.org/3/library/binascii.html>`_ module.
-
-hexlify()'ed result of:
-
-- hexlify()'ed string of the salt, followed by a newline (``0x0a``)
-- hexlify()'ed string of the encrypted HMAC, followed by a newline. The HMAC is:
-
-  - a `RFC2104 <https://www.ietf.org/rfc/rfc2104.txt>`_ style HMAC
-
-    - inputs are:
-
-      - The AES256 encrypted ciphertext
-      - A PBKDF2 key. This key, the cipher key, and the cipher IV are generated from:
-
-        - the salt, in bytes
-        - 10000 iterations
-        - SHA256() algorithm
-        - the first 32 bytes are the cipher key
-        - the second 32 bytes are the HMAC key
-        - the remaining 16 bytes are the cipher IV
-
--  hexlify()'ed string of the ciphertext. The ciphertext is:
-
-  - AES256 encrypted data. The data is encrypted using:
-
-    - AES-CTR stream cipher
-    - cipher key
-    - IV
-    - a 128-bit counter block seeded from an integer IV
-    - the plaintext
-
-      - the original plaintext
-      - padding up to the AES256 blocksize. (The data used for padding is based on `RFC5652 <https://tools.ietf.org/html/rfc5652#section-6.3>`_)
+The rest of the content is the 'vaulttext'. The vaulttext is a text-armored version of the encrypted ciphertext and depends on the vault method used.
+In the case of ``V2`` this is a base64 encoded string formatted to fit in 80 column lines.
+For ``AES256`` this is a hexlified string formatted to fit in 80 column lines.

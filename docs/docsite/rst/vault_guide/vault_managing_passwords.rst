@@ -3,47 +3,57 @@
 Managing vault passwords
 ========================
 
-Managing your encrypted content is easier if you develop a strategy for managing your vault passwords. A vault password can be any string you choose. There is no special command to create a vault password. However, you need to keep track of your vault passwords. Each time you encrypt a variable or file with Ansible Vault, you must provide a password. When you use an encrypted variable or file in a command or playbook, you must provide the same password that was used to encrypt it. To develop a strategy for managing vault passwords, start with two questions:
+Managing your encrypted content is easier if you develop a strategy for managing your vault passwords.
+A vault password can be any string you choose. There is no special command to create a vault password.
+However, you need to keep track of them. Each time you encrypt a variable or file with Ansible Vault,
+you must provide a password. When you use an encrypted variable or file in a command or playbook,
+you must provide the same password that was used to encrypt it.
+
+To develop a strategy for managing vault passwords, start with two questions:
 
   * Do you want to encrypt all your content with the same password, or use different passwords for different needs?
-  * Where do you want to store your password or passwords?
+  * Where do you want to store your password(s)?
 
-Choosing between a single password and multiple passwords
----------------------------------------------------------
+This choice will depend heavily on your context, security policies, laws and regulations.
+You should consult your security team to evaluate the pros and cons before you decide on a stategy.
 
-If you have a small team or few sensitive values, you can use a single password for everything you encrypt with Ansible Vault. Store your vault password securely in a file or a secret manager as described below.
-
-If you have a larger team or many sensitive values, you can use multiple passwords. For example, you can use different passwords for different users or different levels of access. Depending on your needs, you might want a different password for each encrypted file, for each directory, or each environment. You might have a playbook that includes two vars files, one for the dev environment and one for the production environment, encrypted with two different passwords. When you run the playbook, you can select the correct vault password for the environment you are targeting using a vault ID.
-
-.. _vault_ids:
 
 Managing multiple passwords with vault IDs
 ------------------------------------------
 
-If you use multiple vault passwords, you can differentiate one password from another with vault IDs. You use the vault ID in three ways:
+If you use multiple vault passwords, you can differentiate one from another with vault IDs. You use the vault ID in three ways:
 
   * Pass it with :option:`--vault-id <ansible-playbook --vault-id>` to the :ref:`ansible-vault` command when you create encrypted content
   * Include it wherever you store the password for that vault ID (see :ref:`storing_vault_passwords`)
   * Pass it with :option:`--vault-id <ansible-playbook --vault-id>` to the :ref:`ansible-playbook` command when you run a playbook that uses content you encrypted with that vault ID
 
-When you pass a vault ID as an option to the :ref:`ansible-vault` command, you add a label (a hint or nickname) to the encrypted content. This label documents which password you used to encrypt it. The encrypted variable or file includes the vault ID label in plain text in the header. The vault ID is the last element before the encrypted content. For example:
+When you pass a vault ID as an option to the :ref:`ansible-vault` command, you add a label (a hint or nickname) to the encrypted content.
+This label documents which password you used to encrypt it. The encrypted variable or file includes the vault ID label in plain text in the header.
+The vault ID is the last element before the encrypted content. For example:
 
  .. code-block:: yaml
 
     my_encrypted_var: !vault |
-              $ANSIBLE_VAULT;1.2;AES256;dev
-              30613233633461343837653833666333643061636561303338373661313838333565653635353162
-              3263363434623733343538653462613064333634333464660a663633623939393439316636633863
-              61636237636537333938306331383339353265363239643939666639386530626330633337633833
-              6664656334373166630a363736393262666465663432613932613036303963343263623137386239
-              6330
+          $ANSIBLE_VAULT;1.2;V2;dev_id
+          eyJrZXkiOiAiZ0FBQUFBQm15bF9weGtPanc0X1NqbFBEX3ltZEk0NUhqX1hkUzBjRWc1QU1GdkJUMGZh
+          eDA3UFJOeVBPS3RJUTliTHJHX3k1OWh5czBZQ25Fbi12MnRWeDFwWmdoRU94Qmx3Y1Ntd214RDRvWC1L
+          eUhFMjlEVk1yUk05cmI5VGFRQjdpZGZuWWlCdVQiLCAiY2lwaGVydGV4dCI6ICJnQUFBQUFCbXlsX3A5
+          MXFjVTF6dml6NFVUcC1HLU5JYVpGSG9MRU03NUEwX09GME9ZSG15MEQ1OUtST0thRDNzOFFjamtwc3Q3
+          c2ZSZXhPU2ZWd0R0dU5EWGhkZjF0M3dnSnBFQzFRUGJyZE9VeHZKNFFmMnZwQT0ifQ==
 
-In addition to the label, you must provide a source for the related password. The source can be a prompt, a file, or a script, depending on how you are storing your vault passwords. The pattern looks like this:
+In addition to the label, you must provide a source for the related password. The source can be a prompt, a file, or a script, depending on how you are storing your vault passwords.The pattern looks like this:
 
 .. code-block:: bash
 
-   --vault-id label@source
+   --vault-id [<label>@]<source>
 
+An actual example:
+
+.. code-block:: bash
+
+   --vault-id myvaultid@/path/to/myvaultsecretsfile
+
+If you omit the label, no vault-id will be assigned, if both are specfied the ``@`` is requried as a separator. Paths will be relative to the current working directory.
 If your playbook uses multiple encrypted variables or files that you encrypted with different passwords, you must pass the vault IDs when you run that playbook. You can use :option:`--vault-id <ansible-playbook --vault-id>` by itself, with :option:`--vault-password-file <ansible-playbook --vault-password-file>`, or with :option:`--ask-vault-pass <ansible-playbook --ask-vault-pass>`. The pattern is the same as when you create encrypted content: include the label and the source for the matching password.
 
 See below for examples of encrypting content with vault IDs and using content encrypted with vault IDs. The :option:`--vault-id <ansible-playbook --vault-id>` option works with any Ansible command that interacts with vaults, including :ref:`ansible-vault`, :ref:`ansible-playbook`, and so on.
@@ -56,17 +66,18 @@ Ansible does not enforce using the same password every time you use a particular
 Enforcing vault ID matching
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default, the vault ID label is only a hint to remind you which password you used to encrypt a variable or file. Ansible does not check that the vault ID in the header of the encrypted content matches the vault ID you provide when you use the content. Ansible decrypts all files and variables called by your command or playbook that are encrypted with the password you provide. To check the encrypted content and decrypt it only when the vault ID it contains matches the one you provide with ``--vault-id``, set the config option :ref:`DEFAULT_VAULT_ID_MATCH`. When you set :ref:`DEFAULT_VAULT_ID_MATCH`, each password is only used to decrypt data that was encrypted with the same label. This is efficient and predictable and can reduce errors when different values are encrypted with different passwords.
+By default, the vault ID label is only a hint to remind you which password you used to encrypt a variable or file. Ansible does not check that the vault ID in the header of the encrypted content matches the vault ID you provide when yoU use the content. Ansible decrypts all files and variables called by your command or playbook that are encrypted with the password you provide. To check the encrypted content and decrypt it only when the vault ID it contains matches the one you provide with ``--vault-id``, set the config option :ref:`DEFAULT_VAULT_ID_MATCH`. When you enable this configuration, each password is only used to decrypt data that was encrypted with the same label. This is efficient and predictable and can reduce errors when different values are encrypted with different passwords.
 
 .. note::
-   Even with the :ref:`DEFAULT_VAULT_ID_MATCH` setting enabled, Ansible does not enforce using the same password every time you use a particular vault ID label.
+   Even with the :ref:`DEFAULT_VAULT_ID_MATCH` setting enabled, Ansible does not enforce using the same password every time you use a particular vault ID label,
+   only that both must match to decrypt content.
 
 .. _storing_vault_passwords:
 
 Storing and accessing vault passwords
 -------------------------------------
 
-You can memorize your vault password or manually copy vault passwords from any source and paste them at a command-line prompt, but most users store them securely and access them as needed from within Ansible. You have two options for storing vault passwords that work from within Ansible: in files or a third-party tool, such as the system keyring or a secret manager. If you store your passwords in a third-party tool, you need a vault password client script to retrieve them from within Ansible.
+You can memorize your vault password or manually copy vault passwords from any source and paste them at a command-line prompt, but most users store them securely and access them as needed from within Ansible. You have two options for storing vault passwords that work from within Ansible: in files or a third-party tool, such as the system keyring or a password manager. If you store your passwords in a third-party tool, you need a vault password client script to retrieve them from within Ansible.
 
 Storing passwords in files
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -77,14 +88,14 @@ When you run a playbook that uses a vault password stored in a file, specify the
 
 .. code-block:: bash
 
-    ansible-playbook --extra-vars @secrets.enc --vault-password-file secrets.pass
+    ansible-playbook --extra-vars @passwords.enc --vault-password-file passwords.pass
 
 .. _vault_password_client_scripts:
 
 Storing passwords in third-party tools with vault password client scripts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can store your vault passwords on the system keyring, in a database, or in a secret manager and retrieve them from within Ansible using a vault password client script. Enter the password as a string on a single line. If your password has a vault ID, store it in a way that works with your password storage tool.
+You can store your vault passwords on the system keyring, in a database, or in a password manager and retrieve them from within Ansible using a vault password client script. Enter the password as a string on a single line. If your password has a vault ID, store it in a way that works with your password storage tool.
 
 To create a vault password client script:
 
@@ -101,10 +112,10 @@ When you run a playbook that uses vault passwords stored in a third-party tool, 
 
     ansible-playbook --vault-id dev@contrib-scripts/vault/vault-keyring-client.py
 
-Ansible executes the client script with a ``--vault-id`` option so the script knows which vault ID label you specified. For example, a script loading passwords from a secret manager can use the vault ID label to pick either the 'dev' or 'prod' password. The example command above results in the following execution of the client script:
+Ansible executes the client script with a ``--vault-id`` option so the script knows which vault ID label you specified. For example, a script loading passwords from a password manager can use the vault ID label to pick either the 'dev' or 'prod' password. The example command above results in the following execution of the client script:
 
 .. code-block:: bash
 
-    contrib-scripts/vault/vault-keyring-client.py --vault-id dev
+    contrib-scripts/vault/vault-keyring-client.py --vault-id dev_id
 
 For an example of a client script that loads passwords from the system keyring, see the `vault-keyring-client script <https://github.com/ansible-community/contrib-scripts/blob/main/vault/vault-keyring-client.py>`_.

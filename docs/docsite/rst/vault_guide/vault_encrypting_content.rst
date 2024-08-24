@@ -19,7 +19,7 @@ Once you have a strategy for managing and storing vault passwords, you can start
 
    ====================== ================================= ====================================
 
-.. [#f1] Ansible cannot know if it needs content from an encrypted file unless it decrypts the file, so it decrypts all encrypted files referenced in your playbooks and roles.
+.. [#f1] Ansible cannot know if it needs content from an encrypted file unless it decrypts the file, so it decrypts all encrypted variable files referenced in your playbooks and roles.
 
 .. _encrypting_variables:
 .. _single_encrypted_variable:
@@ -62,12 +62,12 @@ The command above creates this content:
  .. code-block:: yaml
 
     the_secret: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          62313365396662343061393464336163383764373764613633653634306231386433626436623361
-          6134333665353966363534333632666535333761666131620a663537646436643839616531643561
-          63396265333966386166373632626539326166353965363262633030333630313338646335303630
-          3438626666666137650a353638643435666633633964366338633066623234616432373231333331
-          6564
+          $ANSIBLE_VAULT;1.1;V2
+          eyJrZXkiOiAiZ0FBQUFBQm15cFZPZmlYTWNPYktlMG82RnMyNlVSTFNhNnA3Y2pJdU1WdFd0RHlJQmpT
+          bHdkT2Uzbi1HdUdPQ2s2X0xuMG9USl9vNllMUnFhS3E4eTY0dVlfd3RsOTFBdkRUZDZ5TEVEZFhWMjVW
+          dVRFVllDbEZEQ3VfczZ3VkZjSm9OMk5jZ0hHMXciLCAiY2lwaGVydGV4dCI6ICJnQUFBQUFCbXlwVk9l
+          QWVndDlSM0lZWVR4R1FQRlBYVTNHS0tzQmxuRkhwSlhmNkVLTUxVQ0tqeU5nOGZ1TXFNVGRIOFNuc2hm
+          c3JsWk5PNjdaYmFjQTk3RkJsOTVoa0Q5QT09In0=
 
 To encrypt the string 'foooodev', add the vault ID label 'dev' with the 'dev' vault password stored in 'a_password_file', and call the encrypted variable 'the_dev_secret':
 
@@ -80,18 +80,19 @@ The command above creates this content:
  .. code-block:: yaml
 
     the_dev_secret: !vault |
-              $ANSIBLE_VAULT;1.2;AES256;dev
-              30613233633461343837653833666333643061636561303338373661313838333565653635353162
-              3263363434623733343538653462613064333634333464660a663633623939393439316636633863
-              61636237636537333938306331383339353265363239643939666639386530626330633337633833
-              6664656334373166630a363736393262666465663432613932613036303963343263623137386239
-              6330
+          $ANSIBLE_VAULT;1.2;V2;dev
+          eyJrZXkiOiAiZ0FBQUFBQm15cFZ3UXo4M2E3TnNNVXdYeEZVcURQOWFkM1RhSXctUFhFR3h6X0wxUldy
+          d0llU0IwRV9pZldVV1BoX0xBb2xBcS1lNjhuVHptMTYwMENSRUpWZW1iRVlGZzlPT3RSMmIwaDBBdDZp
+          OGFhVGlHREJHLWFINzI2b1hrRkZITGRDN0pyVWciLCAiY2lwaGVydGV4dCI6ICJnQUFBQUFCbXlwVndD
+          dktic3BMSm9qMUxYYWc5Vzh0LUNPRzN1dHhDOHoteEctYlpsVWhGVkRSUWtBSkl4R3g4c25WMFpFTTI3
+          UlFiQThXTndtMHd6MFd4X2k4QldZeGprQT09In0=
 
-To encrypt the string 'letmein' read from stdin, add the vault ID 'dev' using the 'dev' vault password stored in `a_password_file`, and name the variable 'db_password':
+To encrypt the string 'letmein' read from stdin, add the vault ID 'dev' using the 'dev' vault password stored in `a_password_file`, and name the variable 'db_password'
+using the old ``AES256`` encryption method:
 
 .. code-block:: bash
 
-    echo -n 'letmein' | ansible-vault encrypt_string --vault-id dev@a_password_file --stdin-name 'db_password'
+    echo -n 'letmein' | ansible-vault encrypt_string --vault-id dev@a_password_file --stdin-name 'db_password' --vault-method aes256
 
 .. warning::
 
@@ -114,7 +115,7 @@ To be prompted for a string to encrypt, encrypt it with the 'dev' vault password
 
 .. code-block:: bash
 
-    ansible-vault encrypt_string --vault-id dev@a_password_file --stdin-name 'new_user_password'
+    ansible-vault encrypt_string --vault-id dev@a_password_file --stdin-name 'new_user_password' --vault-method aes256
 
 The command above triggers this prompt:
 
