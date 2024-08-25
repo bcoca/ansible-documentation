@@ -199,7 +199,7 @@ The tool launches an editor (whatever editor you have defined with $EDITOR, the 
 
 .. code-block:: text
 
-   ``$ANSIBLE_VAULT;1.2;AES256;test``
+   ``$ANSIBLE_VAULT;1.2;V2;test``
 
 To create a new encrypted data file with the vault ID 'my_new_password' assigned to it and be prompted for the password:
 
@@ -274,6 +274,14 @@ This command can rekey multiple data files at once and will ask for the original
 
     ansible-vault rekey --vault-id preprod1@ppold --new-vault-id preprod2@prompt foo.yml bar.yml baz.yml
 
+.. note::
+
+    * When you rekey a file you may also end up changing the encryption method used, if the currently configured one is different than the previouslly used method on the existing vaults.
+
+You can also explicitly define an new or existing encryption method during a rekey
+.. code-block:: bash
+
+    ansible-vault rekey --vault-method v2 foo.yml bar.yml baz.yml
 
 .. _decrypting_files:
 
