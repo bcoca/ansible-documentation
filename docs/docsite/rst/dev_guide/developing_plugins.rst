@@ -8,10 +8,12 @@ Developing plugins
 .. contents::
    :local:
 
-Plugins augment Ansible's core functionality with logic and features that are accessible to all modules. Ansible collections include a number of handy plugins, and you can easily write your own. All plugins must:
+Plugins augment Ansible's core functionality, each plugin type covers a distinct area of logic or features and are globaly accessible just like built in ones.
+We make a disticiton for modules, even though they can be considered a type of plugin, as they are executed outside of the Ansible process itself and have different requriements.
+Ansible collections include a number of handy plugins, and you can easily write your own. All plugins must:
 
 * be written in Python
-* raise errors
+* raise user comprehensible errors
 * return strings in unicode
 * conform to Ansible's configuration and documentation standards
 
@@ -20,21 +22,24 @@ Once you've reviewed these general guidelines, you can skip to the particular ty
 Writing plugins in Python
 =========================
 
-You must write your plugin in Python so it can be loaded by the ``PluginLoader`` and returned as a Python object that any module can use. Since your plugin will execute on the control node, you must write it in a :ref:`compatible version of Python <control_node_requirements>`.
+You must write your plugin in Python so it can be loaded by the ``PluginLoader`` and returned as a Python object that any module can use.
+Since your plugin will execute within Ansible itself, it must support the same versions of Python Ansible on the control node :ref:`compatible version of Python <control_node_requirements>`.
 
 Raising errors
 ==============
 
-You should return errors encountered during plugin execution by raising ``AnsibleError()`` or a similar class with a message describing the error. When wrapping other exceptions into error messages, you should always use the ``to_native`` Ansible function to ensure proper string compatibility across Python versions:
+You should return errors encountered during plugin execution by raising ``AnsibleError()`` or a similar class with a message describing the error.
+You can pass back the original exception via the  ``orig_exc``, present in all of Ansible's exception classes.
 
 .. code-block:: python
-
-    from ansible.module_utils.common.text.converters import to_native
 
     try:
         cause_an_exception()
     except Exception as e:
-        raise AnsibleError('Something happened, this was original exception: %s' % to_native(e))
+        raise AnsibleError('Something happened', orig_exc=e)
+
+.. note::
+    * Starting with ansible-core 2.19, you can just use the more 'pythonic' ``frome e`` instead,  ``orig_exc`` still works to support compatiblity with older versions.
 
 Since Ansible evaluates variables only when they are needed, filter and test plugins should propagate the exceptions ``jinja2.exceptions.UndefinedError`` and ``AnsibleUndefinedVariable`` to ensure undefined variables are only fatal when necessary.
 
@@ -44,17 +49,29 @@ Check the section on the specific plugin type you're developing for type-specifi
 String encoding
 ===============
 
-You must convert any strings returned by your plugin into Python's unicode type. Converting to unicode ensures that these strings can run through Jinja2. To convert strings:
+You must convert any strings returned by your plugin into Python's unicode type.
+Converting to unicode ensures that these strings can run through Jinja2. To convert strings:
 
 .. code-block:: python
 
-    from ansible.module_utils.common.text.converters import to_text
-    result_string = to_text(result_string)
+    result_string = str(result_string)
+
+.. note::
+   *  previouslly you had to use custom ``to_text`` functions that handled differences between Python2 and Python3, these functions still work but should be phased out.
 
 Plugin configuration & documentation standards
 ==============================================
 
-To define configurable options for your plugin, describe them in the ``DOCUMENTATION`` section of the python file. Callback and connection plugins have declared configuration requirements this way since Ansible version 2.4; most plugin types now do the same. This approach ensures that the documentation of your plugin's options will always be correct and up-to-date. To add a configurable option to your plugin, define it in this format:
+One way to categorize plugins is in how they work with documentation:
+
+    * not at all: doc_fragments, module_utils
+    * it is just documentation: action, filter, module, strategy, test
+    * it also is configuration: become, cache, callback, cliconf, connection, httpapi, inventory, lookup, netconf, shell, vars
+
+Here we are going to discuss the last, group and we also assume the plugin is inheriting from the core base class for it's plugin type.
+To define configurable options for your plugin, describe them in the ``DOCUMENTATION`` section of the python file.
+This approach ensures that the documentation of your plugin's options will always be correct and up-to-date.
+To add a configurable option to your plugin, define it in this format:
 
 .. code-block:: yaml
 
@@ -75,25 +92,39 @@ To define configurable options for your plugin, describe them in the ``DOCUMENTA
         type: boolean/float/integer/list/none/path/pathlist/pathspec/string/tmppath
         version_added: X.x
 
-To access the configuration settings in your plugin, use ``self.get_option(<option_name>)``. 
-Some plugin types handle this differently:
+To access the configuration settings in your plugin's code, use ``self.get_option(<option_name>)`` or ``self.get_options()`` to get them all.
+Options get primed, validated and cast into the appropriate types when ``self.set_options()`` is called.
+Depending on plugin type this is mostly done for you:
 
-* Become, callback, connection and shell plugins are guaranteed to have the engine call ``set_options()``. 
-* Lookup plugins always require you to handle it in the ``run()`` method.
-* Inventory plugins are done automatically if you use the ``base _read_config_file()`` method. If not, you must use ``self.get_option(<option_name>)``.
-* Cache plugins do it on load.
+* Become, callback, connection and shell plugins are guaranteed to have the engine call ``set_options()`` for you.
 * Cliconf, httpapi and netconf plugins indirectly piggy back on connection plugins.
-* Vars plugin settings are populated when first accessed (using the ``self.get_option()`` or ``self.get_options()`` method.
+* Lookup plugins always require you to handle it in the ``run()`` method.
+* Inventory plugins can just use ``_read_config_file()`` method from the base class, which already calls ``set_options()``, otherwise you must call it directly.
+* Cache plugins do it on load.
+* Vars plugin settings are populated when first accessed.
 
-If you need to populate settings explicitly, use a ``self.set_options()`` call.
+The short version is that lookup and inventory plugins are the ones that  require you to call ``set_options`` yourself, either directly or indirectly.
 
-Configuration sources follow the precedence rules for values in Ansible. When there are multiple values from the same category, the value defined last takes precedence. For example, in the above configuration block, if both ``name_of_ansible_var`` and ``name_of_second_var`` are defined, the value of the ``option_name`` option will be the value of ``name_of_second_var``. Refer to :ref:`general_precedence_rules` for further information.
+Configuration sources follow the precedence rules defined for Ansible's own configuration settings.
+When there are multiple values from the same category, the value defined last takes precedence.
+For example, in the above configuration block, if both ``name_of_ansible_var`` and ``name_of_second_var`` are defined, the value of the ``option_name`` option will be the value of ``name_of_second_var``.
+Refer to :ref:`general_precedence_rules` for further information.
 
-Plugins that support embedded documentation (see :ref:`ansible-doc` for the list) should include well-formed doc strings. If you inherit from a plugin, you must document the options it takes, either through a documentation fragment or as a copy. See :ref:`module_documenting` for more information on correct documentation. Thorough documentation is a good idea even if you're developing a plugin for local use.
+.. note::
+    * not all configuration sources are available to all plugins
 
-In ansible-core 2.14 we added support for documenting filter and test plugins. You have two options for providing documentation:
-  - Define a Python file that includes inline documentation for each plugin.
-  - Define a Python file for multiple plugins and create adjacent documentation files in YAML format.
+Where to document
+----------------
+Most plugins support embedded documentation in the same python file that stores their code, they should begin with well-formed doc strings.
+But there are some exceptions:
+
+ * Action plugins are documented via a module of the same name, the module can be otherwise empty, core's ``template`` is an example.
+ * Since Ansible Core 2.14 filters and tests are also documentable in the same file, if it contains a single plugin.
+ * For test and filter files with multiple plugins defined in the same file, you must add an adjacent YAML formatted documentation file per plugin.
+
+If you inherit from a plugin, you must document the options it takes, either through a documentation fragment or as a copy.
+See :ref:`module_documenting` for more information on correct documentation.
+Thorough documentation is a good idea even if you're developing a plugin for local use.
 
 Developing particular plugin types
 ==================================
@@ -103,7 +134,9 @@ Developing particular plugin types
 Action plugins
 --------------
 
-Action plugins let you integrate local processing and local data with module functionality.
+Action plugins execute when when a task's action is invoked, not the module!, and are themselves in charge of executing modules
+and doing any local pre and post processing required or they can just do all the work.
+If a module does not have a corresponding action, the 'normal' action is used.
 
 To create an action plugin, create a new class with the Base(ActionBase) class as the parent:
 
@@ -114,8 +147,7 @@ To create an action plugin, create a new class with the Base(ActionBase) class a
     class ActionModule(ActionBase):
         pass
 
-From there, execute the module using the ``_execute_module`` method to call the original module.
-After successful execution of the module, you can modify the module return data.
+To execute a module, use the the ``_execute_module`` method.
 
 .. code-block:: python
 
@@ -123,6 +155,23 @@ After successful execution of the module, you can modify the module return data.
                                          module_args=module_args,
                                          task_vars=task_vars, tmp=tmp)
 
+In the end you must return a dictionary that follows the JSON structure expected from a module, with  ``failed``, ``changed``, ``msg`` and other keys and values as appropriate.
+
+Errors should be captured and returned emulating module output:
+
+.. code-block:: python
+
+    # example failure
+    try:
+        blow_up()
+    except Exception as e:
+        return_data['failed'] = True
+        return_data['msg'] = f'Stuff broke: {e!r})'
+        return return_data
+
+.. note::
+    * If needed, the exception's traceback can be passed back using the ``exception`` key (not the exception itself, but the traceback).
+    * In ansible core 2.19 and above you can just raise an exception with a user friendly message and use ``from e`` to attach the original.
 
 For example, if you wanted to check the time difference between your Ansible control node and your target machine(s), you could write an action plugin to check the local time and compare it to the return data from Ansible's ``setup`` module:
 
@@ -139,14 +188,20 @@ For example, if you wanted to check the time difference between your Ansible con
 
     class ActionModule(ActionBase):
         def run(self, tmp=None, task_vars=None):
+
             super(ActionModule, self).run(tmp, task_vars)
+
+            ret = dict()
+            remote_date = None
+
             module_args = self._task.args.copy()
             module_return = self._execute_module(module_name='setup',
                                                  module_args=module_args,
                                                  task_vars=task_vars, tmp=tmp)
-            ret = dict()
-            remote_date = None
-            if not module_return.get('failed'):
+            if module_return.get('failed'):
+                module_return['msg'] = f'Could not check time drift due to gathering failure: {module_return["msg"]}'
+                return module_return
+            else:
                 for key, value in module_return['ansible_facts'].items():
                     if key == 'ansible_date_time':
                         remote_date = value['iso8601']
