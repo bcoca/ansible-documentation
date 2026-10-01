@@ -1,1 +1,4 @@
-../hacking/pr_labeler/requirements.txt
+codeowners
+jinja2
+pygithub
+typer-slim
